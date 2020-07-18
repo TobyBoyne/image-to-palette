@@ -1,53 +1,66 @@
+import torch
+from torch.optim import optimizer
+from torch.nn import MSELoss
+
+
+import math
 import matplotlib.pyplot as plt
 from matplotlib.colors import rgb_to_hsv, hsv_to_rgb
-import numpy as np
-
-from scipy import ndimage
 
 
 
-def colour_distance(c0, c1):
-	"""Finds the distance in colour space between two HSV values
+HSV_SCALE = torch.tensor([2*math.pi, 1.0, 1.0])
+def get_colour_distance_fn(arr):
+	"""Finds element-wise squared-distance in colour space between a pytorch tensor and an HSV colour
 	Treating HSV colour space as a cone
 	https://stackoverflow.com/a/39113477/12126787"""
-	(h0, s0, v0), (h1, s1, v1) = c0, c1
-	h0, h1 = h0*2*np.pi, h1*2*np.pi
-	v0, v1 = v0 / 255, v1 / 255
-	dh = (np.sin(h0)*s0*v0 - np.sin(h1)*s1*v1) ** 2
-	ds = (np.cos(h0)*s0*v0 - np.cos(h1)*s1*v1) ** 2
-	dv = (v0 - v1) ** 2
-	dist = np.sqrt(dh + ds + dv)
-	return dist
+	A = arr * HSV_SCALE
+	H = torch.sin(A[..., 0]) * A[..., 1] * A[..., 2]
+	S = torch.cos(A[..., 0]) * A[..., 1] * A[..., 2]
+	V = A[..., 2]
 
-def colour_distance_arrs(a0, a1):
-	"""Finds element-wise squared-distance in colour space between two arrays of HSV values
-	Treating HSV colour space as a cone
-	https://stackoverflow.com/a/39113477/12126787"""
-	h0, h1 = a0[...,0]*2*np.pi, a1[...,0]*2*np.pi
-	s0, s1 = a0[...,1],         a1[...,1]
-	v0, v1 = a0[...,2]/255,     a1[...,2]/255
+	def f(colour):
+		h, s, v = colour
+		h = h * 2 * math.pi
+		dh = (H - torch.sin(h) * s * v) ** 2
+		ds = (S - torch.cos(h) * s * v) ** 2
+		dv = (V - v) ** 2
+		return dh + ds + dv
 
-	dh = (np.sin(h0) * s0 * v0 - np.sin(h1) * s1 * v1) ** 2
-	ds = (np.cos(h0) * s0 * v0 - np.cos(h1) * s1 * v1) ** 2
-	dv = (v0 - v1) ** 2
+	return f
 
-	return dh + ds + dv
+def open_image(fname):
+	rgb_image = plt.imread(f"images/{fname}")
+	hsv_image = rgb_to_hsv(rgb_image)
+	image_tensor = torch.from_numpy(hsv_image) * torch.tensor([1, 1, 1/255])
+	return rgb_image, image_tensor
+
+
+# def get_colour_tensor(colour, tensor_like):
+# 	"""Returns a tensor the size of `tensor_like` with each element having a value of `colour`"""
+# 	colour_tensor = torch.zeros_like(tensor_like)
+# 	colour_tensor[...,:] = torch.tensor(colour)
+# 	return colour_tensor
+
 
 if __name__ == "__main__":
 	fig, (ax0, ax1, ax2) = plt.subplots(ncols=3)
 
-	V, H = np.mgrid[0:1:100j, 0:1:300j]
-	S = np.ones_like(V)
-	HSV = np.dstack((H, S, V))
+	x, y = torch.linspace(0, 1, 100), torch.linspace(0, 1, 300)
+	V, H = torch.meshgrid(x, y)
+	S = torch.ones_like(V)
+	HSV = torch.stack((H, S, V), dim=-1)
+	print(HSV)
 	RGB = hsv_to_rgb(HSV)
 
-	RED = np.zeros_like(RGB)
-	RED[...,:] = [0.0, 1.0, 0.0]
+	# COLOUR is given as HSV
+	COLOUR = torch.tensor([0.8, 0.8, 1])
+	COLOUR_ARR = torch.zeros_like(HSV)
+	COLOUR_ARR[...,:] = torch.from_numpy(hsv_to_rgb(COLOUR))
 
-	dists = np.sqrt(colour_distance_arrs(HSV, rgb_to_hsv(RED)))
-
+	dists = torch.sqrt(colour_distance(HSV, COLOUR))
 	ax0.imshow(RGB, extent=[0, 360, 0, 1], aspect=150)
-	ax1.imshow(RED, extent=[0, 360, 0, 1], aspect=150)
+	ax1.imshow(COLOUR_ARR, extent=[0, 360, 0, 1], aspect=150)
 	ax2.imshow(dists, extent=[0, 360, 0, 1], aspect=150)
 
 	plt.show()
