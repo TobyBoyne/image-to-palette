@@ -10,7 +10,7 @@ from matplotlib.colors import rgb_to_hsv, hsv_to_rgb
 
 
 HSV_SCALE = torch.tensor([2*math.pi, 1.0, 1.0])
-def get_colour_distance_fn(arr):
+def get_colour_distance_fn(arr, palette_size):
 	"""Finds element-wise squared-distance in colour space between a pytorch tensor and an HSV colour
 	Treating HSV colour space as a cone
 	https://stackoverflow.com/a/39113477/12126787"""
@@ -19,9 +19,17 @@ def get_colour_distance_fn(arr):
 	S = torch.cos(A[..., 0]) * A[..., 1] * A[..., 2]
 	V = A[..., 2]
 
+	H = H.unsqueeze(0).repeat(palette_size, 1, 1)
+	S = S.unsqueeze(0).repeat(palette_size, 1, 1)
+	V = V.unsqueeze(0).repeat(palette_size, 1, 1)
+
 	def f(colour):
-		h, s, v = colour
+		"""Takes a colour palette tensor (N x 3), returns distance between each pixel in image
+		and the palette, as a tensor (N x H x W), where H and W are the image dimensions"""
+
+		h, s, v = colour.T
 		h = h * 2 * math.pi
+		h, s, v = h[:, None, None], s[:, None, None], v[:, None, None]  # 'unsqueeze' in H, W dimensions
 		dh = (H - torch.sin(h) * s * v) ** 2
 		ds = (S - torch.cos(h) * s * v) ** 2
 		dv = (V - v) ** 2
